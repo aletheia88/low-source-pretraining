@@ -15,16 +15,20 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 
 class genreClassifier(nn.Module):
 
-    def __init__(self, model_path, freeze_bert=False):
+    def __init__(self, freeze_bert=False):
         
         super(genreClassifier, self).__init__()
         D_in, H, D_out = 768, 50, 256
 
-        self.bert = RobertaForMaskedLM.from_pretrained(model_path)
-
+        self.bert = RobertaForMaskedLM.from_pretrained('bert-models')
+        
+        # last_hidden_state_cls has shape (4, 256)
         self.classifier = nn.Sequential(
-                        nn.Linear(D_in, D_out)
+                        nn.Linear(D_in, H),
+                        nn.ReLU(),
+                        nn.Linear(H, D_out)
                         )
+
         if freeze_bert:
             for param in self.bert.parameters():
                 param.requires_grad = False
@@ -34,16 +38,24 @@ class genreClassifier(nn.Module):
         # @TODO: Extract the correct layer
         outputs = self.bert(input_ids=input_ids, 
                             attention_mask=attention_mask)
+        
+        print(f'outputs: {outputs}')
+        print(f'outputs: {outputs[0].shape}')
         last_hidden_state_cls = outputs[0][:, 0, :]
+        
+        print(f'last_hidden_state_cls: {last_hidden_state_cls.shape}')
+        
         logits = self.classifier(last_hidden_state_cls)
 
         return logits
 
-def train(model, train_dataloader, valid_dataloader, epochs):
+def train(train_dataloader, valid_dataloader, epochs):
     
+    device = torch.device(0)
     loss_fn = nn.CrossEntropyLoss()
-
+    
     model = genreClassifier(freeze_bert=False)
+    model.to(device)
 
     optimizer = AdamW(model.parameters(),
                         lr=5e-5,
@@ -63,6 +75,8 @@ def train(model, train_dataloader, valid_dataloader, epochs):
             batch_counts += 1
             b_input_ids, b_attn_mask, b_labels = tuple(t.to(device) for t in batch)
             model.zero_grad()
+            print(f'{b_input_ids.shape}, {b_attn_mask.shape}, {b_labels.shape}')
+            
             logits = model(b_input_ids, b_attn_mask)
 
             loss = loss_fn(logits, b_labels)
@@ -135,5 +149,7 @@ if __name__ == "__main__":
     print(train_dataloader)
     print(valid_dataloader)
     
-    
+    epochs = 4
 
+    train(train_dataloader, valid_dataloader, epochs)
+    
