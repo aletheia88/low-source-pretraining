@@ -1,11 +1,17 @@
 import torch
+import torch.nn as nn
+import torch.nn as nn
+
 import math
 import pandas as pd
 from transformers import RobertaForMaskedLM
 from tqdm import tqdm
 from train_bert_lm import *
+from sklearn.preprocessing import OneHotEncoder
+
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler,\
                                                         SequentialSampler
+from transformers import AdamW, get_linear_schedule_with_warmup
 
 class genreClassifier(nn.Module):
 
@@ -17,15 +23,15 @@ class genreClassifier(nn.Module):
         self.bert = RobertaForMaskedLM.from_pretrained(model_path)
 
         self.classifier = nn.Sequential(
-                        nn.Linear(D_in, H),
-                        nn.Softmax(),
-                        nn.Linear(H, D_out))
+                        nn.Linear(D_in, D_out)
+                        )
         if freeze_bert:
             for param in self.bert.parameters():
                 param.requires_grad = False
     
     def forward(self, input_ids, attention_mask):
         
+        # @TODO: Extract the correct layer
         outputs = self.bert(input_ids=input_ids, 
                             attention_mask=attention_mask)
         last_hidden_state_cls = outputs[0][:, 0, :]
@@ -33,13 +39,60 @@ class genreClassifier(nn.Module):
 
         return logits
 
-def train(ds_name):
-    return
-
-def get_input_ids_att_masks(data_df):
+def train(model, train_dataloader, valid_dataloader, epochs):
     
+    loss_fn = nn.CrossEntropyLoss()
+
+    model = genreClassifier(freeze_bert=False)
+
+    optimizer = AdamW(model.parameters(),
+                        lr=5e-5,
+                        eps=1e-8)
+
+    total_steps = len(train_dataloader) * epochs
+    scheduler = get_linear_schedule_with_warmup(optimizer,
+                                                num_warmup_steps=0,
+                                                num_training_steps=total_steps)
+    for epoch_i in range(epochs):
+        
+        total_loss, batch_loss, batch_counts = 0, 0, 0
+        model.train()
+
+        for step, batch in enumerate(train_dataloader):
+
+            batch_counts += 1
+            b_input_ids, b_attn_mask, b_labels = tuple(t.to(device) for t in batch)
+            model.zero_grad()
+            logits = model(b_input_ids, b_attn_mask)
+
+            loss = loss_fn(logits, b_labels)
+            batch_loss += loss.item()
+            total_loss += loss.item()
+
+            loss.backward()
+
+
+def create_dataloader(input_ids, attention_masks, labels, batch_size=4):
+    
+    ## encode labels ##
+    encoder = OneHotEncoder(handle_unknown='ignore')
+    encoded_labels = pd.DataFrame(encoder.fit_transform(labels).toarray()).values
+    
+    encoded_labels = torch.tensor(encoded_labels)
+     
+    data = TensorDataset(input_ids, attention_masks, encoded_labels)
+    sampler = RandomSampler(data)
+    dataloader = DataLoader(data, sampler=sampler, batch_size=batch_size)
+
+    return dataloader
+    
+def get_input_ids_att_masks(data_df):
+
+    tokenizer = RobertaTokenizerFast.from_pretrained('tokenizer') 
+     
     input_ids = []
     attention_masks = []
+    max_length = 1320
 
     for codewords in tqdm(data_df.values):
         
@@ -52,12 +105,35 @@ def get_input_ids_att_masks(data_df):
                     padding='max_length',
                     truncation=True)
         
-        input_ids.append(x.get('input_ids'))
-        attention_masks.append(x.get('attention_mask'))
+            input_ids.append(x.get('input_ids'))
+            attention_masks.append(x.get('attention_mask'))
 
-        input_ids = torch.tensor(input_ids)
-        attention_masks = torch.tensor(attention_masks)
+    input_ids = torch.tensor(input_ids)
+    attention_masks = torch.tensor(attention_masks)
         
-        return input_ids, attention_masks
+    return input_ids, attention_masks
 
- 
+if __name__ == "__main__":
+    
+    df = pd.read_csv('train_val_data.csv')
+    train_df = df[df['is_valid'] == 0]['codewords'] 
+    valid_df = df[df['is_valid'] == 1]['codewords']
+    
+    train_labels = df[df['is_valid'] == 0]['genre'].to_frame() 
+    valid_labels = df[df['is_valid'] == 1]['genre'].to_frame()
+
+    train_input_ids, train_attention_masks = get_input_ids_att_masks(train_df)
+    valid_input_ids, valid_attention_masks = get_input_ids_att_masks(valid_df)
+    print(f'{train_input_ids.shape}, {valid_input_ids.shape}')
+    print(f'{train_attention_masks.shape}, {valid_attention_masks.shape}')
+    
+    print(f'{train_labels.shape}, {valid_labels.shape}') 
+    train_dataloader = create_dataloader(train_input_ids, train_attention_masks,
+                                        train_labels)
+    valid_dataloader = create_dataloader(valid_input_ids, valid_attention_masks,
+                                        valid_labels)
+    print(train_dataloader)
+    print(valid_dataloader)
+    
+    
+
