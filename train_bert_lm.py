@@ -13,7 +13,7 @@ from torch.utils.data.dataset import Dataset
 from pathlib import Path
 
 TOKENIZER_SAVEDIR = "tokenizer"
-LM_MODEL_SAVEDIR = "bert-models"
+LM_MODEL_SAVEDIR = "bert-models-1"
 VOCAB_SIZE = 256
 MAX_LEN = 1320
 MASKING_PROPORTION = 0.15
@@ -43,7 +43,8 @@ class Dataset(Dataset):
 
 def train_LM(ds_name):
     
-    tokenizer = RobertaTokenizerFast.from_pretrained(TOKENIZER_SAVEDIR)
+    tokenizer = RobertaTokenizerFast.from_pretrained(TOKENIZER_SAVEDIR,
+                                                        max_len=MAX_LEN)
     train_dataset, valid_dataset = create_train_val_set(ds_name,
                                     tokenizer)
     data_collator = create_data_collector(tokenizer)
@@ -95,15 +96,14 @@ def create_train_bert_lm(data_collator, train_dataset, valid_dataset):
                 logging_steps=1000,
                 evaluation_strategy="steps",
                 eval_steps=1000,
-                report_to="none",
                 save_total_limit=1,
-                prediction_loss_only=False
+                prediction_loss_only=False,
+                report_to="none"
                 )
 
     trainer = Trainer(
                 model=model,
                 args = training_args,
-                data_collator=data_collator,
                 train_dataset=train_dataset,
                 eval_dataset=valid_dataset
                 )
@@ -113,8 +113,10 @@ def create_train_bert_lm(data_collator, train_dataset, valid_dataset):
     trainer.save_model(LM_MODEL_SAVEDIR)
 
 if __name__ == "__main__":
+    
+    train_LM('train_val_data.csv')
 
-    #train_LM('train_val_data.csv')
+    ''' 
     model_path = 'bert-models'
     model = RobertaForMaskedLM.from_pretrained(model_path)
     parameters = model.parameters()
@@ -125,4 +127,4 @@ if __name__ == "__main__":
     state_dict = torch.load('bert-models/pytorch_model.bin')
     print('state_dict')
     print(state_dict)
-
+    '''
