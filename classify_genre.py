@@ -18,15 +18,12 @@ class genreClassifier(nn.Module):
     def __init__(self, freeze_bert=False):
         
         super(genreClassifier, self).__init__()
-        D_in, H, D_out = 768, 50, 256
+        D_in, D_out = 768, 10
 
         self.bert = RobertaForMaskedLM.from_pretrained('bert-models')
         
-        # last_hidden_state_cls has shape (4, 256)
         self.classifier = nn.Sequential(
-                        nn.Linear(D_in, H),
-                        nn.ReLU(),
-                        nn.Linear(H, D_out)
+                        nn.Linear(D_in, D_out)
                         )
 
         if freeze_bert:
@@ -35,15 +32,17 @@ class genreClassifier(nn.Module):
     
     def forward(self, input_ids, attention_mask):
         
-        # @TODO: Extract the correct layer
         outputs = self.bert(input_ids=input_ids, 
-                            attention_mask=attention_mask)
+                            attention_mask=attention_mask,
+                            output_hidden_states=True)
         
-        print(f'outputs: {outputs}')
-        print(f'outputs: {outputs[0].shape}')
-        last_hidden_state_cls = outputs[0][:, 0, :]
+        # curr outputs[1][-1] shape - torch.Size([4, 1320, 768])
+        # outputs shape from tutorial - torch.Size([32, 64, 768])
         
-        print(f'last_hidden_state_cls: {last_hidden_state_cls.shape}')
+        last_hidden_state_cls = outputs[1][-1][:, 0, :]
+        #last_hidden_state_cls = outputs[0][:, 0, :]
+        
+        #print(f'last_hidden_state_cls: {last_hidden_state_cls.shape}')
         
         logits = self.classifier(last_hidden_state_cls)
 
@@ -75,10 +74,13 @@ def train(train_dataloader, valid_dataloader, epochs):
             batch_counts += 1
             b_input_ids, b_attn_mask, b_labels = tuple(t.to(device) for t in batch)
             model.zero_grad()
-            print(f'{b_input_ids.shape}, {b_attn_mask.shape}, {b_labels.shape}')
+            #print(f'id: {b_input_ids.shape}, mask: {b_attn_mask.shape}, labels: {b_labels.shape}')
             
             logits = model(b_input_ids, b_attn_mask)
-
+            #print(f'logits: {logits}')
+            #print(f'logits shape: {logits.shape}')
+            
+            #print(f'b_labels shape: {b_labels.shape}')
             loss = loss_fn(logits, b_labels)
             batch_loss += loss.item()
             total_loss += loss.item()
@@ -146,8 +148,6 @@ if __name__ == "__main__":
                                         train_labels)
     valid_dataloader = create_dataloader(valid_input_ids, valid_attention_masks,
                                         valid_labels)
-    print(train_dataloader)
-    print(valid_dataloader)
     
     epochs = 4
 
