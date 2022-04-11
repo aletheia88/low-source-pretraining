@@ -87,6 +87,14 @@ def train(train_dataloader, valid_dataloader, epochs):
 
             loss.backward()
 
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            scheduler.step()
+    
+    print("Training complete!")
+    print(f'batch_loss: {batch_loss}, total_loss:{total_loss}')
+    
+    return batch_loss, total_loss
 
 def create_dataloader(input_ids, attention_masks, labels, batch_size=4):
     
