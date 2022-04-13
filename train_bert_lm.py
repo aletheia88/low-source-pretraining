@@ -12,8 +12,8 @@ from tqdm import tqdm
 from torch.utils.data.dataset import Dataset
 from pathlib import Path
 
-TOKENIZER_SAVEDIR = "tokenizer"
-LM_MODEL_SAVEDIR = "bert-models-1"
+TOKENIZER_SAVEDIR = "tokenizer-upd"
+LM_MODEL_SAVEDIR = "bert-models-upd"
 VOCAB_SIZE = 256
 MAX_LEN = 1320
 MASKING_PROPORTION = 0.15
@@ -49,12 +49,6 @@ def train_LM(ds_name):
                                     tokenizer)
     data_collator = create_data_collector(tokenizer)
     create_train_bert_lm(data_collator, train_dataset, valid_dataset)
-
-def fine_tune_LM(model_path):
-    """Not sure how to fine-tune"""
-
-    #model = RobertaForMaskedLM.from_pretrained(model_path)
-    state_dict = torch.load('bert-models/pytorch_model.bin')
 
 def create_train_val_set(file_name, tokenizer):
 
@@ -115,7 +109,7 @@ def create_train_bert_lm(data_collator, train_dataset, valid_dataset):
 
 if __name__ == "__main__":
     
-    train_LM('train_val_data.csv')
+    train_LM('train_val_codewords.csv')
 
     ''' 
     model_path = 'bert-models'
