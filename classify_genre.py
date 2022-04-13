@@ -4,6 +4,7 @@ import random
 import time
 import math
 import pandas as pd
+import numpy as np
 from transformers import RobertaForMaskedLM
 from tqdm import tqdm
 from train_bert_lm import *
@@ -20,7 +21,7 @@ class genreClassifier(nn.Module):
         super(genreClassifier, self).__init__()
         D_in, D_out = 768, 10
 
-        self.bert = RobertaForMaskedLM.from_pretrained('bert-models')
+        self.bert = RobertaForMaskedLM.from_pretrained('bert-models-upd')
         
         self.classifier = nn.Sequential(
                         nn.Linear(D_in, D_out),
@@ -37,15 +38,9 @@ class genreClassifier(nn.Module):
                             attention_mask=attention_mask,
                             output_hidden_states=True)
         
-        # curr outputs[1][-1] shape - torch.Size([4, 1320, 768])
-        # outputs shape from tutorial - torch.Size([32, 64, 768])
-        
-        # (1,768)
         last_hidden_state_cls = outputs[1][-1][:, 0, :]
-        print(f'last_hidden_state_cls shape = {last_hidden_state_cls.shape}')
          
         logits = self.classifier(last_hidden_state_cls)
-        print(f'logits shape = {logits.shape}')
         
         return logits
 
@@ -76,7 +71,7 @@ def run_pipeline(ds_name):
 
     epochs = 10
     
-    if torch.cuda.is_available(): device = torch.device(0)
+    if torch.cuda.is_available(): device = torch.device("cuda:0")
 
     avg_train_losses, avg_valid_losses, avg_valid_accuracies = train(
                                                         train_dataloader, 
@@ -90,7 +85,7 @@ def run_pipeline(ds_name):
 def label_genres(data_labels):
 
     labels = []
-    label = 1
+    label = 0
     
     for i in range(len(data_labels)-1):
 
@@ -140,10 +135,7 @@ def train(train_dataloader, valid_dataloader, epochs, device):
             model.zero_grad()
             
             logits = model(b_input_ids, b_attn_mask)
-            print(f'logits shape = {logits.shape}')
-             
             loss = loss_fn(logits, b_labels)
-            print(f'loss = {loss.item()}')
             
             batch_loss += loss.item()
             total_loss += loss.item()
@@ -159,28 +151,24 @@ def train(train_dataloader, valid_dataloader, epochs, device):
                 print(f"{epoch_i + 1:^7} | {step:^7} | {batch_loss / batch_counts:^12.6f} | {'-':^10} | {'-':^9} | {time_elapsed:^9.2f}")
                 batch_loss, batch_counts = 0, 0
                 t0_batch = time.time()
-
-            valid_loss, valid_accuracy = evaluate(model, 
-                                                valid_dataloader,
-                                                torch.device(1))
-
-            print(f'valid loss = {valid_loss}')
-            avg_valid_losses.append(valid_loss)
-            avg_valid_accuracies.append(valid_accuracy)
-
-            time_elapsed = time.time() - t0_epoch
-            print(f"{epoch_i + 1:^7} | {'-':^7} | {avg_train_loss:^12.6f} | {val_loss:^10.6f} | {val_accuracy:^9.2f} | {time_elapsed:^9.2f}")
-            print("-"*70)
-
-        print("\n")
-
+        
         avg_train_loss = total_loss / len(train_dataloader)
         avg_train_losses.append(avg_train_loss)
-
         print("-"*70)
+                
+        valid_loss, valid_accuracy = evaluate(model,
+                                            valid_dataloader,
+                                            device)
 
+        avg_valid_losses.append(valid_loss)
+        avg_valid_accuracies.append(valid_accuracy)
+
+        time_elapsed = time.time() - t0_epoch
+        print(f"{epoch_i + 1:^7} | {'-':^7} | {avg_train_loss:^12.6f} | {valid_loss:^10.6f} | {valid_accuracy:^9.2f} | {time_elapsed:^9.2f}")
+        print("-"*70)
+        print("\n")
+    
     print("Training complete!")
-    print(f'batch_loss: {batch_loss}, total_loss:{total_loss}')
     
     return avg_train_losses, avg_valid_losses, avg_valid_accuracies
 
@@ -204,25 +192,17 @@ def evaluate(model, valid_dataloader, device):
         valid_losses.append(loss.item())
         
         preds = torch.argmax(logits, dim=1)
-        #print(f'preds shape - {preds.shape} labels shape - {b_labels.shape}')
-        #print(f'preds - {preds}')
-        #print(f'labels - {b_labels}')
 
         accuracy = (preds == b_labels).cpu().numpy().mean() * 100
         valid_accuracies.append(accuracy)
 
     mean_valid_loss = np.mean(valid_losses)
-    mean_valid_accuracy = np.mean(val_accuracies)
+    mean_valid_accuracy = np.mean(valid_accuracies)
 
     return mean_valid_loss, mean_valid_accuracy
 
 def create_dataloader(input_ids, attention_masks, labels, batch_size=4):
     
-    ## encode labels ##
-    #encoder = OneHotEncoder(handle_unknown='ignore')
-    #encoded_labels = pd.DataFrame(encoder.fit_transform(labels).toarray()).values
-    #encoded_labels = torch.tensor(encoded_labels)
-     
     data = TensorDataset(input_ids, attention_masks, labels)
     sampler = RandomSampler(data)
     dataloader = DataLoader(data, sampler=sampler, batch_size=batch_size)
@@ -258,6 +238,6 @@ def get_input_ids_att_masks(data_df):
 
 if __name__ == "__main__":
 
-    ds_name = 'train_val_data.csv'
+    ds_name = 'train_val_codewords.csv'
     run_pipeline(ds_name)
     
