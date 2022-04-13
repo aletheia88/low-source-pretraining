@@ -53,11 +53,19 @@ def one_hot_encode(data, col_name):
 
     return one_hot_encoded_labels
 
+def get_max_codeword_len(ds_name):
+
+    codewords = pd.read_csv(ds_name)['codewords']
+    max_len = 0
+
+    for codeword in codewords:
+        if len(codeword.split()) > max_len:
+            max_len = len(codeword.split())
+    
+    return max_len
 
 if __name__ == "__main__":
 
-    f_name = 'train_val_data.csv'
-    token_dict = get_token_freq(f_name)
-    print(token_dict)
-
-
+    f_name = 'test_codewords.csv'
+    max_len = get_max_codeword_len(f_name)
+    print(max_len)
