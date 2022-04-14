@@ -5,6 +5,7 @@ import time
 import math
 import pandas as pd
 import numpy as np
+import csv
 from transformers import RobertaForMaskedLM
 from tqdm import tqdm
 from train_bert_lm import *
@@ -44,9 +45,30 @@ class genreClassifier(nn.Module):
         
         return logits
 
-def run_pipeline(ds_name):
+def evaluate_model(model, test_ds_name, device, batch_size):
+
+    df_t = pd.read_csv(test_ds_name)
+    test_df = df_t['codewords']
+    test_genres = df_t['genre'].values
     
-    df = pd.read_csv(ds_name)
+    test_labels = torch.tensor(label_genres(test_genres))
+    test_input_ids, test_attention_masks = get_input_ids_att_masks(test_df)
+    
+    test_dataloader = create_dataloader(test_input_ids,
+                                        test_attention_masks,
+                                        test_labels,
+                                        batch_size)
+ 
+
+    test_loss, test_accuracy = evaluate(model, test_dataloader, device)
+    
+    return {'test_loss':test_loss,
+            'test_accuracy':test_accuracy}
+
+def get_trained_model(init_model, train_val_ds_name, csv_file, batch_size, epochs, device):
+
+    df = pd.read_csv(train_val_ds_name)
+
     train_df = df[df['is_valid'] == 0]['codewords'] 
     valid_df = df[df['is_valid'] == 1]['codewords']
 
@@ -62,25 +84,24 @@ def run_pipeline(ds_name):
     train_dataloader = create_dataloader(train_input_ids, 
                                         train_attention_masks,
                                         train_labels,
-                                        batch_size=1)
+                                        batch_size)
 
     valid_dataloader = create_dataloader(valid_input_ids, 
                                         valid_attention_masks,
                                         valid_labels,
-                                        batch_size=1)
+                                        batch_size)
+   
+    #if torch.cuda.is_available(): device = torch.device("cuda:0")
 
-    epochs = 10
+    trained_model = train(
+                init_model,
+                train_dataloader,
+                valid_dataloader,
+                epochs,
+                device,
+                csv_file)
     
-    if torch.cuda.is_available(): device = torch.device("cuda:0")
-
-    avg_train_losses, avg_valid_losses, avg_valid_accuracies = train(
-                                                        train_dataloader, 
-                                                        valid_dataloader, 
-                                                        epochs,
-                                                        device)
-
-    return avg_train_losses, avg_valid_losses, avg_valid_accuracies
-
+    return trained_model
 
 def label_genres(data_labels):
 
@@ -99,12 +120,12 @@ def label_genres(data_labels):
     
     return labels
 
-def train(train_dataloader, valid_dataloader, epochs, device):
+def train(model, train_dataloader, valid_dataloader, epochs, device, csv_fname):
  
     loss_fn = nn.CrossEntropyLoss()
     
-    model = genreClassifier(freeze_bert=False)
-    model.to(device)
+    #model = genreClassifier(freeze_bert=False)
+    #model.to(device)
 
     optimizer = AdamW(model.parameters(),
                         lr=5e-5,
@@ -114,14 +135,18 @@ def train(train_dataloader, valid_dataloader, epochs, device):
     scheduler = get_linear_schedule_with_warmup(optimizer,
                                                 num_warmup_steps=0,
                                                 num_training_steps=total_steps)
-    avg_train_losses = []
-    avg_valid_losses = []
-    avg_valid_accuracies = []
-    
+    '''
+    csv_file = open(csv_fname, 'w') 
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(['train_losses', 'valid_losses', 'valid_accuracies'])
+    '''
+
+    record_df = pd.DataFrame(columns=('train_losses', 'valid_losses', 'valid_accuracies'))
+        
     for epoch_i in range(epochs):
         
-        print(f"{'Epoch':^7} | {'Batch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
-        print("-"*70)
+        #print(f"{'Epoch':^7} | {'Batch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
+        #print("-"*70)
 
         t0_epoch, t0_batch = time.time(), time.time()
 
@@ -148,58 +173,56 @@ def train(train_dataloader, valid_dataloader, epochs, device):
 
             if (step % 4 == 0 and step != 0) or (step == len(train_dataloader) - 1):
                 time_elapsed = time.time() - t0_batch
-                print(f"{epoch_i + 1:^7} | {step:^7} | {batch_loss / batch_counts:^12.6f} | {'-':^10} | {'-':^9} | {time_elapsed:^9.2f}")
+                #print(f"{epoch_i + 1:^7} | {step:^7} | {batch_loss / batch_counts:^12.6f} | {'-':^10} | {'-':^9} | {time_elapsed:^9.2f}")
                 batch_loss, batch_counts = 0, 0
                 t0_batch = time.time()
         
         avg_train_loss = total_loss / len(train_dataloader)
-        avg_train_losses.append(avg_train_loss)
-        print("-"*70)
+        #print("-"*70)
                 
         valid_loss, valid_accuracy = evaluate(model,
                                             valid_dataloader,
                                             device)
 
-        avg_valid_losses.append(valid_loss)
-        avg_valid_accuracies.append(valid_accuracy)
+        #csv_writer.writerow([avg_train_loss, valid_loss, valid_accuracy])
+        record_df.loc[epoch_i] = [avg_train_loss, valid_loss, valid_accuracy]
+        record_df.to_csv(csv_fname)
 
         time_elapsed = time.time() - t0_epoch
-        print(f"{epoch_i + 1:^7} | {'-':^7} | {avg_train_loss:^12.6f} | {valid_loss:^10.6f} | {valid_accuracy:^9.2f} | {time_elapsed:^9.2f}")
-        print("-"*70)
-        print("\n")
+        #print(f"{epoch_i + 1:^7} | {'-':^7} | {avg_train_loss:^12.6f} | {valid_loss:^10.6f} | {valid_accuracy:^9.2f} | {time_elapsed:^9.2f}")
+        #print("-"*70)
+        #print("\n")
     
+    #csv_file.close()
     print("Training complete!")
-    
-    return avg_train_losses, avg_valid_losses, avg_valid_accuracies
 
-def evaluate(model, valid_dataloader, device):
+    return model
 
-    """ evaluate on validation set """
+def evaluate(model, eval_dataloader, device):
+
+    """ evaluate on validation/test set """
     model.eval()
 
     loss_fn = nn.CrossEntropyLoss()
 
-    valid_accuracies = []
-    valid_losses = []
+    eval_accuracies = []
+    eval_losses = []
 
-    for batch in valid_dataloader:
+    for batch in eval_dataloader:
         b_input_ids, b_attn_mask, b_labels = tuple(t.to(device) for t in batch)
 
         with torch.no_grad():
             logits = model(b_input_ids, b_attn_mask)
 
         loss = loss_fn(logits, b_labels)
-        valid_losses.append(loss.item())
+        eval_losses.append(loss.item())
         
         preds = torch.argmax(logits, dim=1)
 
         accuracy = (preds == b_labels).cpu().numpy().mean() * 100
-        valid_accuracies.append(accuracy)
+        eval_accuracies.append(accuracy)
 
-    mean_valid_loss = np.mean(valid_losses)
-    mean_valid_accuracy = np.mean(valid_accuracies)
-
-    return mean_valid_loss, mean_valid_accuracy
+    return np.mean(eval_losses), np.mean(eval_accuracies)
 
 def create_dataloader(input_ids, attention_masks, labels, batch_size=4):
     
@@ -238,6 +261,7 @@ def get_input_ids_att_masks(data_df):
 
 if __name__ == "__main__":
 
-    ds_name = 'train_val_codewords.csv'
-    run_pipeline(ds_name)
-    
+    train_val_ds_name = 'train_val_codewords.csv'
+    test_ds_name = 'test_codewords.csv'
+    csv_file = 'training_records.csv'
+
