@@ -41,7 +41,6 @@ def format(codewords):
     
     return tokens
 
-
 def one_hot_encode(data, col_name):
     
     one_hot_encoded_labels = []
@@ -64,8 +63,22 @@ def get_max_codeword_len(ds_name):
     
     return max_len
 
+def convert_txt_to_csv(txt_file, csv_file):
+    
+    f = open(txt_file)
+    csv_f = open(csv_file, 'w')
+    csv_writer = csv.writer(csv_f)
+    csv_writer.writerow(['steps', 'training_losses', 'validation_losses'])
+
+    for line in f:
+        csv_writer.writerow([float(item) for item in line.split()])
+    
+    csv_f.close()
+
 if __name__ == "__main__":
 
-    f_name = 'test_codewords.csv'
-    max_len = get_max_codeword_len(f_name)
-    print(max_len)
+    #f_name = 'test_codewords.csv'
+    #max_len = get_max_codeword_len(f_name)
+    #print(max_len)
+
+    convert_txt_to_csv('lm_records.txt', 'lm_records.csv')
