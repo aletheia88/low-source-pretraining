@@ -1,21 +1,21 @@
 import torch
-import math
 import pandas as pd
 import wandb
+import logging
 from transformers import RobertaConfig, RobertaModel, RobertaForMaskedLM
 from transformers import RobertaTokenizerFast
 from transformers import DataCollatorForLanguageModeling
 from transformers import Trainer, TrainingArguments
 from transformers import pipeline
-
 from tqdm import tqdm
 from torch.utils.data.dataset import Dataset
 from pathlib import Path
 
-TOKENIZER_SAVEDIR = "tokenizer-upd"
-LM_MODEL_SAVEDIR = "bert-models-upd"
-VOCAB_SIZE = 256
-MAX_LEN = 1320
+base_dir = f"/home/alu/low-source-pretraining/gs_1024c"
+TOKENIZER_SAVEDIR = f"{base_dir}/gs_1024c_tokenizer"
+LM_MODEL_SAVEDIR = f"{base_dir}/gs_1024c_bert_model"
+VOCAB_SIZE = 1024
+MAX_LEN = 1292 # 1320 for gtzan
 MASKING_PROPORTION = 0.15
 BATCH_SIZE = 4
 
@@ -41,14 +41,17 @@ class Dataset(Dataset):
     def __getitem__(self, i):
         return torch.tensor(self.examples[i])
 
-def train_LM(ds_name):
+def train_LM(ds_name, num_clusters):
     
     tokenizer = RobertaTokenizerFast.from_pretrained(TOKENIZER_SAVEDIR,
                                                         max_len=MAX_LEN)
     train_dataset, valid_dataset = create_train_val_set(ds_name,
                                     tokenizer)
     data_collator = create_data_collector(tokenizer)
-    create_train_bert_lm(data_collator, train_dataset, valid_dataset)
+    bert_trainer = create_bert_lm(num_clusters, data_collator,
+                                train_dataset, valid_dataset)
+
+    return bert_trainer
 
 def create_train_val_set(file_name, tokenizer):
 
@@ -70,10 +73,12 @@ def create_data_collector(tokenizer):
                                     )
     return data_collator
 
-def create_train_bert_lm(data_collator, train_dataset, valid_dataset):
-    
+def create_bert_lm(num_clusters, data_collator, train_dataset, valid_dataset):
+
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
+        
     config = RobertaConfig(
-                vocab_size=256,
+                vocab_size=num_clusters,
                 max_position_embeddings=MAX_LEN+2,
                 num_attention_heads=12,
                 num_hidden_layers=6,
@@ -84,12 +89,12 @@ def create_train_bert_lm(data_collator, train_dataset, valid_dataset):
     training_args = TrainingArguments(
                 overwrite_output_dir=True,
                 output_dir=LM_MODEL_SAVEDIR,
-                num_train_epochs=10,
+                num_train_epochs=50,
                 per_device_train_batch_size=BATCH_SIZE,
                 save_steps=1000,
-                logging_steps=1000,
+                logging_steps=100,
                 evaluation_strategy="steps",
-                eval_steps=1000,
+                eval_steps=100,
                 save_total_limit=1,
                 prediction_loss_only=False,
                 report_to="none"
@@ -103,23 +108,10 @@ def create_train_bert_lm(data_collator, train_dataset, valid_dataset):
                 eval_dataset=valid_dataset
                 )
     
+    #return trainer
     trainer.train()
-    
     trainer.save_model(LM_MODEL_SAVEDIR)
 
 if __name__ == "__main__":
     
-    train_LM('train_val_codewords.csv')
-
-    ''' 
-    model_path = 'bert-models'
-    model = RobertaForMaskedLM.from_pretrained(model_path)
-    parameters = model.parameters()
-
-    for param in parameters:
-        print(param)
-        
-    state_dict = torch.load('bert-models/pytorch_model.bin')
-    print('state_dict')
-    print(state_dict)
-    '''
+    train_LM(f'{base_dir}/gs_1024c_train_val_codewords.csv', VOCAB_SIZE)
