@@ -4,8 +4,8 @@ from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from pathlib import Path
 
-def tokenize(ds_name):
-
+def tokenize(ds_name, tokenizer_savedir, max_len, vocab_size):
+    
     special_tokens = [
         "<s>",
         "<pad>",
@@ -13,9 +13,6 @@ def tokenize(ds_name):
         "<unk>",
         "<mask>",
     ]
-    vocab_size = 256
-    max_len = 1320
-    tokenizer_savedir = 'tokenizer-upd'
 
     tokenizer = Tokenizer(WordLevel(unk_token="<unk>"))
     trainer = WordLevelTrainer(show_progress = True,
@@ -32,6 +29,10 @@ def tokenize(ds_name):
     tokenizer.save(f"{tokenizer_savedir}/tokenizer.json")
 
 if __name__ == "__main__":
+    
+    vocab_size = 128
 
-    tokenize("train-data")
-
+    ds_name = f"gs_{vocab_size}c/gs_train"
+    tokenizer_savedir = f"gs_{vocab_size}c/gs_{vocab_size}c_tokenizer"
+    max_len = 1292
+    tokenize(ds_name, tokenizer_savedir, max_len, vocab_size)
