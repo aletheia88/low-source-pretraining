@@ -16,16 +16,11 @@ We want to know how much LM pretraining helps when you have a relatively small a
 
 **Plans**
 
-Step 1: Get training data
-
-Step 2: Extract MFCCs from the training data (using default librosa settings)
-
-Step 3: Do k-means clustering to learn a set of K=256 clusters on the MFCC features
-
-Step 4: Use the learned K=256 clusters to quantize each MFCC feature vector into a codeword
-
-Step 5: Train BERT LM on codeword sequences
-
-Step 6: Finetune BERT classifier on training labels
+* Get training data
+* Extract MFCCs from the training data (using default librosa settings)
+* Do k-means clustering to learn a set of K=256 clusters on the MFCC features
+* Use the learned K=256 clusters to quantize each MFCC feature vector into a codeword
+* Train BERT LM on codeword sequences
+* Finetune BERT classifier on training labels
 
 
